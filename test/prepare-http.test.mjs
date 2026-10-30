@@ -1,0 +1,36 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Script } from 'node:vm';
+import { initHome } from '../src/home.mjs';
+import { registerResume } from '../src/resumes.mjs';
+import { serve } from '../src/ui/server.mjs';
+
+test('local prepare page and API work together with token/origin checks', async t => {
+  const home = mkdtempSync(join(tmpdir(), 'ap-http-'));
+  initHome(home, 'cn-eu-careers');
+  const server = serve({ home, port: 0 });
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); rmSync(home, { recursive: true, force: true }); });
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const page = await fetch(`${origin}/prepare`).then(r => r.text());
+  const token = page.match(/const token='([a-f0-9]{32})'/)?.[1];
+  assert.ok(token); assert.match(page, /岗位筛选与简历选择/);
+  assert.doesNotThrow(() => new Script(page.match(/<script>([\s\S]*?)<\/script>/)[1]));
+  const root = await fetch(origin).then(r => r.text()); assert.match(root, /href="\/prepare"/);
+  const post = (path, body, headers = {}) => fetch(origin + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-token': token, ...headers }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/prepare', {}, { 'x-token': '' })).status, 403);
+  assert.equal((await post('/api/prepare', {}, { origin: 'https://other.test' })).status, 403);
+  const job = { company: 'Example', role: 'Robotics engineer', jobType: 'full_time', track: 'robotics', resumeLanguage: 'en' };
+  assert.equal((await post('/api/prepare', job).then(r => r.json())).status, 'missing_resume');
+  assert.equal((await post('/api/prepare', { ...job, role: 'Intern' }).then(r => r.json())).status, 'excluded');
+  assert.equal((await post('/api/resumes', {}).then(r => r.json())).resumes.length, 0);
+  const file = join(home, 'fixture.pdf'); writeFileSync(file, '%PDF-1.4\nsynthetic');
+  registerResume(home, file, { id: 'engineer-v1', language: 'en', tracks: ['robotics'], jobTypes: ['full_time'] });
+  const ready = await post('/api/prepare', job).then(r => r.json());
+  assert.equal(ready.status, 'ready'); assert.equal(ready.selected.id, 'engineer-v1');
+  assert.equal((await post('/api/prepare', { ...job, resumeLanguage: 'fr' }).then(r => r.json())).status, 'needs_review');
+});

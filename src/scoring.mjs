@@ -27,8 +27,7 @@ export function scoreEvaluation(profile, ratings) {
 }
 
 // Whole-word, accent-insensitive match: "CEA" must not hit "Ceapro".
-const fold = (s) => String(s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const hasWord = (text, term) => new RegExp(`(^|[^\\p{L}\\p{N}])${fold(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\p{L}\\p{N}]|$)`, 'u').test(fold(text));
+import { containsTerm as hasWord } from './text.mjs';
 
 /**
  * Hard filters run before any scoring: excluded companies and keywords, required keywords.

@@ -16,6 +16,7 @@ import { initHome, inspectHome, suggestedHome } from '../home.mjs';
 import { followUpStatus } from '../followups.mjs';
 import { Tracker, events, lastActivity, parseScore } from '../tracker.mjs';
 import { AGENT_TASKS, detectAgents, launchInteractive, readAgent, saveAgent, taskCommand } from '../agents.mjs';
+import { readResumeLibrary, routeResume } from '../resumes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = resolve(HERE, '..', '..', 'bin', 'apply-pilot.mjs');
@@ -131,8 +132,9 @@ export function serve({ home, port = 4321, host = '127.0.0.1', open = false }) {
   const allowed = (req) => {
     const hostHeader = String(req.headers.host || '');
     const origin = String(req.headers.origin || '');
-    const local = new RegExp(`^(localhost|127\\.0\\.0\\.1):${port}$`);
-    return local.test(hostHeader) && (!origin || new RegExp(`^http://(localhost|127\\.0\\.0\\.1):${port}$`).test(origin)) && req.headers['x-token'] === token;
+    const actualPort = server.address()?.port || port;
+    const local = new RegExp(`^(localhost|127\\.0\\.0\\.1):${actualPort}$`);
+    return local.test(hostHeader) && (!origin || new RegExp(`^http://(localhost|127\\.0\\.0\\.1):${actualPort}$`).test(origin)) && req.headers['x-token'] === token;
   };
 
   const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -159,6 +161,8 @@ export function serve({ home, port = 4321, host = '127.0.0.1', open = false }) {
         req.on('end', () => { try { json(res, 200, fn(JSON.parse(body || '{}'))); } catch (e) { json(res, 400, { ok: false, error: e.message || 'bad request' }); } });
       };
       if (pathname === '/api/run') return withBody((b) => runTask(b.task));
+      if (pathname === '/api/prepare') return withBody((b) => ({ ok: true, ...routeResume(paths.home, loadProfile(paths.home), b) }));
+      if (pathname === '/api/resumes') return withBody(() => ({ ok: true, resumes: readResumeLibrary(paths.home), policy: loadProfile(paths.home).jobPolicy }));
       if (pathname === '/api/home/check') return withBody((b) => ({ ok: true, ...inspectHome(b.path || '') }));
       if (pathname === '/api/home/use') return withBody(useHome);
       if (pathname === '/api/agent/select') return withBody((b) => ({ ok: true, agent: saveAgent(paths.home, b.agent) }));
@@ -183,6 +187,11 @@ export function serve({ home, port = 4321, host = '127.0.0.1', open = false }) {
       if (pathname === '/api/quit') { json(res, 200, { ok: true }); setTimeout(() => process.exit(0), 200); return; }
       return json(res, 404, { ok: false });
     }
+    if (pathname === '/prepare') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(readFileSync(join(HERE, 'prepare.html'), 'utf8').replace('__TOKEN__', token));
+      return;
+    }
     if (pathname === '/' || pathname === '/index.html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(readFileSync(join(HERE, 'index.html'), 'utf8').replace('__TOKEN__', token));
@@ -203,8 +212,10 @@ export function serve({ home, port = 4321, host = '127.0.0.1', open = false }) {
     } else throw err;
   });
   server.listen(port, host, () => {
-    console.log(`apply-pilot panel: http://localhost:${port}  (tracker: ${trackerFile})`);
-    if (open) openInBrowser(`http://localhost:${port}`);
+    const actualPort = server.address().port;
+    console.log(`apply-pilot panel: http://localhost:${actualPort}  (tracker: ${trackerFile})`);
+    if (open) openInBrowser(`http://localhost:${actualPort}`);
   });
+  server.on('close', () => { watcher?.close(); clearTimeout(timer); });
   return server;
 }

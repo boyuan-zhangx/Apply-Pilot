@@ -108,12 +108,16 @@ export function normalizeUrl(raw) {
     if (/linkedin\.com$/i.test(url.hostname) && li) return `linkedin#${li[1]}`;
     const jk = /indeed\./i.test(url.hostname) ? url.searchParams.get('jk') : null;
     if (jk) return `indeed#${jk}`;
-    url.hash = ''; url.search = '';
-    return url.toString().replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '').toLowerCase();
+    // Preserve job IDs and SPA routes; remove only known tracking parameters.
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_.*|ref|refid|trk|trackingid|fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    return url.toString().replace(/\/$/, '').replace(/^https?:\/\/(www\.)?/, '');
   } catch { return value.toLowerCase(); }
 }
 
-const norm = (v) => String(v || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const norm = (v) => String(v || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const STOP = new Set(['stage', 'stagiaire', 'intern', 'internship', 'm2', 'mois', 'months', 'month', 'de', 'du', 'des', 'la', 'le', 'les', 'et', 'en', 'and', 'the', 'of', 'for', 'pour', 'h', 'f', 'x']);
 const tokens = (v) => new Set(norm(v).split(' ').filter((t) => t.length > 2 && !STOP.has(t) && !/^\d+$/.test(t)));
 
@@ -126,6 +130,9 @@ export function similarity(a, b) {
 }
 
 const sameCompany = (a, b) => {
+  if (norm(a) && norm(a) === norm(b)) return true;
+  // Do not use a partial Chinese company name to merge unrelated employers.
+  if (/\p{Script=Han}/u.test(`${a || ''}${b || ''}`)) return false;
   const x = norm(a).split(' ')[0], y = norm(b).split(' ')[0];
   return x.length >= 3 && y.length >= 3 && (norm(a).includes(y) || norm(b).includes(x));
 };
@@ -135,6 +142,11 @@ export function findDuplicates(rows, candidate, threshold = 0.7) {
   const key = normalizeUrl(candidate.url);
   return rows.filter((r) => {
     if (key && normalizeUrl(r.url || r.notes) === key) return true;
+    // Distinct links on the same recruitment host represent separate requisitions.
+    try {
+      const a = new URL(r.url), b = new URL(candidate.url);
+      if (a.hostname.replace(/^www\./, '') === b.hostname.replace(/^www\./, '') && normalizeUrl(r.url) !== key) return false;
+    } catch { /* Missing URLs: fall back to the employer and title. */ }
     return sameCompany(r.company, candidate.company) && similarity(r.role, candidate.role) >= threshold;
   });
 }

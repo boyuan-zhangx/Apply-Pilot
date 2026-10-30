@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>岗位筛选与简历选择 · Apply-Pilot</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#19273b;font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1050px;margin:auto;padding:32px 24px}a{color:#2859b9}h1{font-size:28px;margin:12px 0}h2{font-size:19px;margin:0 0 16px}.muted{color:#5e6d80}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.card{background:white;border:1px solid #dbe2ec;border-radius:14px;padding:24px;margin:20px 0}label{display:block;margin:12px 0 5px;font-weight:600}input,select,textarea{width:100%;padding:10px;border:1px solid #a9b7c9;border-radius:7px;font:inherit;background:#fff;color:inherit}textarea{min-height:100px;resize:vertical}button{padding:11px 22px;border:0;border-radius:8px;background:#2859b9;color:white;font:inherit;cursor:pointer;margin-top:20px}button:disabled{opacity:.5}.badge{background:#eef3fc;padding:8px 12px;border-radius:8px}.item{padding:12px 0;border-bottom:1px solid #e3e8f0;overflow-wrap:anywhere}#result{overflow-wrap:anywhere}pre{white-space:pre-wrap;font-size:13px}@media(max-width:760px){.grid{grid-template-columns:1fr}main{padding:20px 16px}.card{margin:10px 0}}
+</style>
+<main>
+<a href="/">← 投递进度看板</a>
+<h1>岗位筛选与简历选择</h1>
+<p class="muted">检查岗位类型，选择合适的中英文简历，并保留需要核实的条件。</p>
+<p id="policy" class="badge">正在加载筛选规则…</p>
+<div class="grid">
+<form id="form" class="card">
+<h2>岗位信息</h2>
+<label for="company">公司 / 招聘单位</label><input id="company" name="company" maxlength="200" required placeholder="例如 NVIDIA">
+<label for="role">职位名称</label><input id="role" name="role" maxlength="300" required placeholder="例如 Robotics Engineer">
+<label for="jobType">招聘类型（依据岗位原文）</label><select id="jobType" name="jobType"><option value="unknown">尚未确认</option value="full_time">正职</option><option value="phd">博士</option><option value="cifre">CIFRE</option><option value="internship">实习</option></select>
+<label for="track">岗位方向</label><select id="track" name="track" required><option value="">请选择</option><option value="robotics">机器人</option><option value="autonomous_driving">自动驾驶</option><option value="mathematics">数学 / 优化</option><option value="machine_learning">机器学习</option><option value="product">产品经理</option><option value="software">软件工程</option></select>
+<label for="resumeLanguage">申请材料语言</label><select id="resumeLanguage" name="resumeLanguage"><option value="en">英文</option><option value="zh">中文</option><option value="fr">岗位明确要求法语简历</option></select>
+<p class="muted">法语招聘说明可以选择英文简历；以岗位对申请材料的要求为准。</p>
+<label for="description">岗位描述（用于已登记关键词匹配，可选）</label><textarea id="description" name="description" maxlength="2500"></textarea>
+<button id="submit" type="submit">检查岗位并选择简历</button>
+</form>
+<section class="card" aria-live="polite"><h2>检查结果</h2><div id="result" class="muted">填写左侧岗位信息，查看筛选结果和材料缺口。此步骤只在本地运行。</div></section>
+</div>
+<section class="card"><h2>已登记的简历版本</h2><div id="library">正在加载…</div><p class="muted">每个版本保留方向、语言和岗位类型。通过项目的 <code>resume add</code> 命令登记 PDF，操作步骤见本地 docs/personal-use.zh-CN.md。</p></section>
+</main>
+<script>
+const token='__TOKEN__';
+const labels={ready:'材料匹配，可供审核',needs_review:'需要确认',missing_resume:'缺少合适简历',excluded:'不符合筛选规则'};
+const types={full_time:'正职',phd:'博士',cifre:'CIFRE',internship:'实习',unknown:'待确认'};
+async function api(path,body={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','x-token':token},body:JSON.stringify(body)});const data=await r.json();if(!r.ok||!data.ok)throw Error(data.error||'请求失败');return data}
+function line(parent,text,tag='p'){const el=document.createElement(tag);el.textContent=text;parent.append(el);return el}
+api('/api/resumes').then(data=>{
+document.querySelector('#policy').textContent=data.policy?.enabled?'允许正职、博士和 CIFRE；实习白名单：'+(data.policy.internshipCompanies||[]).map(c=>typeof c==='string'?c:c.name).join('、'):'当前资料尚未启用岗位类型规则，请使用 cn-eu-careers 配置。';
+const lib=document.querySelector('#library');lib.replaceChildren();if(!data.resumes.length)line(lib,'还没有登记简历。你提供中英文版本后，可按方向逐份登记。');
+for(const cv of data.resumes)line(lib,cv.id+' · '+cv.language+' · '+cv.tracks.join(', ')+' · '+cv.jobTypes.map(t=>types[t]||t).join(' / ')).className='item';
+}).catch(e=>{document.querySelector('#policy').textContent=e.message;document.querySelector('#library').textContent='简历库加载失败，请检查数据目录。'});
+document.querySelector('#form').addEventListener('submit',async e=>{
+e.preventDefault();const button=document.querySelector('#submit'),out=document.querySelector('#result');button.disabled=true;out.textContent='正在检查…';
+try{const r=await api('/api/prepare',Object.fromEntries(new FormData(e.target)));out.replaceChildren();line(out,labels[r.status]||r.status,'h2');line(out,'岗位类型：'+types[r.policy.type]);for(const gap of r.gaps)line(out,gap);if(r.selected){line(out,'推荐版本：'+r.selected.id,'h3');line(out,r.selected.file);line(out,r.selected.reasons.join(' · '));}else if(r.candidates.length){line(out,'可选版本：');for(const cv of r.candidates)line(out,cv.id+' · '+cv.reasons.join(' · '));}}
+catch(err){out.textContent=err.message}finally{button.disabled=false}
+});
+</script>
+</html>

@@ -2,6 +2,8 @@
 // read many letters; stock phrases and invented claims cost more than they add.
 // The checks are deliberately simple and explainable.
 
+import { containsTerm, escapeRegex } from './text.mjs';
+
 export const STOCK_PHRASES = [
   'passionate', 'dynamic', 'leverage', 'spearhead', 'cutting-edge', 'cutting edge', 'synergy', 'delve',
   'tapestry', 'testament to', 'i am writing to express', 'thrilled', 'excited to apply', 'unique opportunity',
@@ -21,10 +23,12 @@ export function lintText(text, profile = { writing: {} }) {
   }
   for (const claim of w.forbiddenClaims || []) {
     // A forbidden claim may still appear in an honest negation ("I have not used X").
-    const re = new RegExp(`[^.]*\\b${claim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[^.]*`, 'gi');
-    for (const m of text.matchAll(re)) {
-      if (!/\b(not|never|no|haven't|have not|hasn't|without|yet to|would learn|new to me)\b/i.test(m[0])) {
-        issues.push({ rule: 'forbidden-claim', detail: `${claim}: "${m[0].trim().slice(0, 120)}"` });
+    for (const sentence of text.split(/[.!?。！？;；\n]|\bbut\b|但是|但|不过/i)) {
+      if (!containsTerm(sentence, claim)) continue;
+      const escaped = escapeRegex(claim);
+      const negation = new RegExp(`(?:\\b(?:not|never|no|haven't|have not|without|yet to|would learn)\\b[^,，。;；]{0,35}|(?:没有|尚未|未曾|从未|未掌握|不具备)[^,，。;；]{0,12})${escaped}|${escaped}[^,，。;；]{0,12}(?:经验不足|尚未掌握|是新的领域)`, 'i');
+      if (!negation.test(sentence)) {
+        issues.push({ rule: 'forbidden-claim', detail: `${claim}: "${sentence.trim().slice(0, 120)}"` });
       }
     }
   }

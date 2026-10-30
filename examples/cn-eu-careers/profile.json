@@ -1,0 +1,30 @@
+{
+  "candidate": {
+    "summary": "Seeking full-time roles, PhD positions or CIFRE opportunities in China and Europe. Research and industry tracks are evaluated separately. Internships only at explicitly allowlisted employers.",
+    "facts": [],
+    "languages": []
+  },
+  "jobPolicy": {
+    "enabled": true,
+    "allowedTypes": ["full_time", "phd", "cifre"],
+    "internshipCompanies": [
+      { "name": "NVIDIA", "aliases": ["英伟达"] },
+      { "name": "Meta", "aliases": ["Meta Platforms", "Facebook"] },
+      { "name": "Google", "aliases": ["谷歌", "Google DeepMind"] }
+    ]
+  },
+  "scoring": {
+    "dimensions": [
+      { "id": "direction", "label": "方向匹配", "weight": 30, "guide": "Compare the concrete duties or research topic to documented candidate facts. Do not infer mathematics or product experience from AI experience alone." },
+      { "id": "evidence", "label": "经历证据", "weight": 30, "guide": "Require specific verified projects or research. Interests and planned publications are not completed experience." },
+      { "id": "level", "label": "经验与资格", "weight": 15, "guide": "Distinguish internship experience from full-time employment. Record unknown enrolment, work authorization, degree and start-date requirements as gaps." },
+      { "id": "language", "label": "工作语言", "weight": 10, "guide": "Use confirmed language abilities and explicit requirements. A French JD alone does not require a French resume." },
+      { "id": "development", "label": "发展方向", "weight": 15, "guide": "For a PhD/CIFRE assess research question, supervision and funding evidence; for industry assess duties and team. Unknown details are gaps." }
+    ],
+    "thresholds": { "apply": 80, "consider": 65 }
+  },
+  "filters": { "excludeCompanies": [], "excludeKeywords": ["alternance", "apprentissage"], "requireKeywords": [] },
+  "followUp": { "afterDays": 14, "maxFollowUps": 1, "skipAppliedBefore": null },
+  "writing": { "bannedPhrases": [], "forbiddenClaims": [], "maxSemicolons": 0 },
+  "sources": {}
+}

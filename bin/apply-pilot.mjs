@@ -12,6 +12,8 @@ import { lintText } from '../src/lint.mjs';
 import { buildDocx, readParagraphs } from '../src/docx.mjs';
 import { triage } from '../src/triage.mjs';
 import { findCareerOps, runCareerOps } from '../src/careerops.mjs';
+import { checkJobPolicy } from '../src/job-policy.mjs';
+import { readResumeLibrary, registerResume, routeResume } from '../src/resumes.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,7 +34,12 @@ const HELP = `Apply-Pilot — local job/internship application pipeline
 Data folder: APPLY_PILOT_HOME, else the folder saved with "home PATH" or in the panel, else ./apply-data.
 It holds profile.json, data/applications.md, inbox/, output/.
 
-  init [--example NAME]                 create the data directory (examples: ${['generic', 'pharma-m2-europe'].join(', ')})
+  init [--example NAME]                 create the data directory (examples: ${['generic', 'pharma-m2-europe', 'cn-eu-careers'].join(', ')})
+  screen JOB.json [--out REPORT.json]  check job policy and recommend a registered resume (offline)
+  policy JOB.json                       inspect job type and internship allowlist
+  resume list                          list registered resume versions
+  resume add CV.pdf --id ID --language zh|en --tracks robotics --types full_time,phd [--keywords ROS,planning]
+  resume route JOB.json                recommend a resume; never submits an application
   home [PATH] [--init [EXAMPLE]]        show the data folder, or save PATH as the default (--init creates it)
   doctor                                check setup (node, profile, tracker, optional tools, API keys)
   ui [--port 4321] [--open]             dashboard + control panel (scans, checks, export) in your browser
@@ -77,6 +84,31 @@ async function main() {
   const tracker = () => new Tracker(p.tracker);
 
   switch (cmd) {
+    case 'policy': {
+      if (!pos[0]) throw new Error('policy JOB.json');
+      console.log(JSON.stringify(checkJobPolicy(profile, JSON.parse(readFileSync(pos[0], 'utf8'))), null, 2));
+      break;
+    }
+    case 'screen':
+    case 'resume': {
+      const split = (value) => String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (cmd === 'resume' && pos[0] === 'list') { console.log(JSON.stringify(readResumeLibrary(home), null, 2)); break; }
+      if (cmd === 'resume' && pos[0] === 'add') {
+        const row = registerResume(home, pos[1], { id: opt.id, language: opt.language, tracks: split(opt.tracks), jobTypes: split(opt.types), keywords: split(opt.keywords) });
+        console.log(JSON.stringify(row, null, 2)); break;
+      }
+      const file = cmd === 'screen' ? pos[0] : pos[0] === 'route' ? pos[1] : null;
+      if (!file) throw new Error('screen JOB.json | resume list|add|route');
+      const job = JSON.parse(readFileSync(file, 'utf8'));
+      const report = { job, ...routeResume(home, profile, job) };
+      console.log(JSON.stringify(report, null, 2));
+      if (opt.out) {
+        if (existsSync(opt.out)) throw new Error('report already exists; choose a new output path');
+        mkdirSync(dirname(resolve(opt.out)), { recursive: true });
+        writeFileSync(opt.out, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
+      }
+      break;
+    }
     case 'init': {
       const { wrote } = initHome(home, opt.example || 'generic');
       for (const f of wrote) console.log(`wrote ${f}`);

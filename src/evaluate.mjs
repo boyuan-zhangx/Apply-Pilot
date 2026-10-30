@@ -4,6 +4,7 @@
 //     turns the JSON into the weighted score. No API key needed.
 //  2. Standalone: `apply-pilot eval run --provider deepseek` calls a model directly.
 import { hardFilter, scoreEvaluation } from './scoring.mjs';
+import { checkJobPolicy } from './job-policy.mjs';
 
 export const PROVIDERS = {
   deepseek: { kind: 'openai', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', keyEnv: 'DEEPSEEK_API_KEY' },
@@ -21,6 +22,7 @@ export function buildPrompt(profile, jdText) {
     'You screen job and internship postings for one candidate. Be strict and literal.',
     'Rate only what the posting and the candidate facts support. Do not invent experience.',
     'Answer with one JSON object and nothing else.',
+    'Also return jobType: full_time, phd, cifre, internship, or unknown. Classify the advertised contract, not a qualification. Return jobTypeEvidence as a literal quote from the posting; use unknown when unclear.',
   ].join(' ');
   const user = `CANDIDATE TARGET\n${profile.candidate?.summary || '(not set)'}\n\nVERIFIED CANDIDATE FACTS\n${facts}\n\nTHINGS THE CANDIDATE HAS NOT DONE (count as gaps, never as strengths)\n${gaps}\n\nRUBRIC: rate each dimension from 0 to 5\n${dims}\n\nJOB POSTING\n"""\n${jdText.slice(0, 16000)}\n"""\n\nReturn JSON:\n{"company": "...", "role": "...", "location": "...", "start": "...", "duration": "...", "language": "...",\n "ratings": {${profile.scoring.dimensions.map((d) => `"${d.id}": {"score": 0, "reason": "..."}`).join(', ')}},\n "gaps": ["..."], "summary": "two plain sentences"}`;
   return { system, user };
@@ -63,7 +65,10 @@ export function finishEvaluation(profile, answer, jdText = '') {
   // Filters look at the title (and the description's first line, usually the title), not the whole description.
   const filters = hardFilter(profile, { company: answer.company || '', text: `${answer.role || ''}\n${String(jdText).split('\n')[0]}` });
   const scored = scoreEvaluation(profile, answer.ratings || {});
-  return { ...answer, filters, ...scored, decision: filters.length ? 'Skip' : scored.decision };
+  const policy = checkJobPolicy(profile, answer);
+  const decision = filters.length || policy.status === 'excluded' ? 'Skip'
+    : policy.status === 'review' && scored.decision === 'Apply' ? 'Consider' : scored.decision;
+  return { ...answer, filters, ...scored, policy, needsReview: policy.status === 'review', decision };
 }
 
 export async function evaluateText(profile, jdText, opts = {}) {

@@ -26,7 +26,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test test/core.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "ui": "node bin/apply-pilot.mjs ui",
     "build:icons": "node scripts/build-icons.mjs && python scripts/make-installer-bitmaps.py",
     "build:msi": "node scripts/build-msi.mjs"
